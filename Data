@@ -1,0 +1,20 @@
+Student_ID,Age,Gender,Study_Hours,Attendance,Exam_Score,City
+S001,20,Male,5.0,85.0,72,Colombo
+S002,21,Female,3.0,78.0,65,Kandy
+S003,20,female,6.0,92.0,81,Colombo
+S004,22,Male,,75.0,59,Galle
+S005,19,MALE,4.0,88.0,70,Colombo
+S006,21, female ,7.0,,86,Kandy
+S007,20,Male,2.0,68.0,48,Galle
+S008,23,Female,5.0,91.0,79,Colombo
+S009,22,male,4.0,82.0,67,Kandy
+S010,20,Female,,76.0,61,Galle
+S011,21,Male,8.0,95.0,89,Colombo
+S012,19,Female,3.0,80.0,55,Kandy
+S013,20,Male,6.0,87.0,74,Galle
+S014,22,Female,5.0,90.0,82,Colombo
+S015,21,Male,80.0,89.0,76,Kandy
+S016,20,Female,4.0,,68,Galle
+S017,19,Male,5.0,84.0,71,Colombo
+S018,22,Female,6.0,93.0,85,Kandy
+S018,22,Female,6.0,93.0,85,Kandy

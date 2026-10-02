@@ -2,6 +2,10 @@
 
 An interactive Streamlit application that automatically inspects, cleans,
 transforms, and prepares CSV datasets for Machine Learning.
+## 🌐 Live Demo
+
+🚀 **Try the application here:**  
+[Open Live Application]( https://automated-data-cleaning-tool-uit2pvmyetqptrzfyrn5rk.streamlit.app/)
 
 ## 🚀 Project Overview
 

@@ -1,8 +1,15 @@
-import streamlit as st
-import pandas as pd
+import io
+from dataclasses import asdict
+
 import numpy as np
+import pandas as pd
 import plotly.express as px
-from sklearn.preprocessing import StandardScaler
+import streamlit as st
+
+from cleaning import Options, run_pipeline
+
+
+NONE_LABEL = "(none)"
 
 
 # =========================================================
@@ -41,14 +48,15 @@ st.markdown("""
     margin-top: 20px;
 }
 
-.metric-card {
-    padding: 18px;
-    border-radius: 12px;
-    border: 1px solid rgba(128,128,128,0.2);
-}
-
 </style>
 """, unsafe_allow_html=True)
+
+
+def section(title):
+    st.markdown(
+        f'<div class="section-title">{title}</div>',
+        unsafe_allow_html=True
+    )
 
 
 # =========================================================
@@ -69,6 +77,23 @@ st.markdown(
 
 
 # =========================================================
+# CACHED HELPERS
+# (the whole script reruns on every widget click, so cache the heavy work)
+# =========================================================
+
+@st.cache_data(show_spinner=False)
+def load_csv(raw_bytes):
+    df = pd.read_csv(io.BytesIO(raw_bytes))
+    df.columns = df.columns.astype(str)
+    return df
+
+
+@st.cache_data(show_spinner=False)
+def process(df, option_values):
+    return run_pipeline(df, Options(**option_values))
+
+
+# =========================================================
 # SIDEBAR
 # =========================================================
 
@@ -78,165 +103,14 @@ st.sidebar.caption(
     "Choose which preprocessing steps should be applied."
 )
 
-handle_missing = st.sidebar.checkbox(
-    "🕳️ Handle Missing Values",
-    value=True
-)
-
-remove_duplicates = st.sidebar.checkbox(
-    "♻️ Remove Duplicate Rows",
-    value=True
-)
-
-standardize_categories = st.sidebar.checkbox(
-    "🔤 Standardize Categories",
-    value=True
-)
-
-detect_outliers = st.sidebar.checkbox(
-    "📊 Detect Outliers",
-    value=True
-)
-
-create_features = st.sidebar.checkbox(
-    "🛠️ Feature Engineering",
-    value=True
-)
-
-apply_encoding = st.sidebar.checkbox(
-    "🔢 Categorical Encoding",
-    value=True
-)
-
-apply_scaling = st.sidebar.checkbox(
-    "📏 Numerical Scaling",
-    value=True
-)
-
-
-# =========================================================
-# HELPER FUNCTIONS
-# =========================================================
-
-def detect_id_columns(dataframe):
-
-    id_columns = []
-
-    for column in dataframe.columns:
-
-        name = column.lower()
-
-        if (
-            name == "id"
-            or name.endswith("_id")
-            or "identifier" in name
-        ):
-            id_columns.append(column)
-
-    return id_columns
-
-
-def standardize_categories(dataframe):
-
-    df = dataframe.copy()
-
-    categorical_columns = df.select_dtypes(
-        include=["object", "string"]
-    ).columns
-
-    for column in categorical_columns:
-
-        df[column] = (
-            df[column]
-            .fillna("Unknown")
-            .astype(str)
-            .str.strip()
-            .str.lower()
-            .str.capitalize()
-        )
-
-    return df
-
-
-def create_features(dataframe):
-
-    df = dataframe.copy()
-
-    created = []
-
-    # Student performance feature
-    if "Exam_Score" in df.columns:
-
-        def category(score):
-
-            if pd.isna(score):
-                return "Unknown"
-
-            if score >= 80:
-                return "Excellent"
-
-            elif score >= 70:
-                return "Good"
-
-            elif score >= 60:
-                return "Average"
-
-            else:
-                return "Needs Improvement"
-
-        df["Performance_Category"] = (
-            df["Exam_Score"].apply(category)
-        )
-
-        created.append("Performance_Category")
-
-    return df, created
-
-
-def find_outliers(dataframe):
-
-    results = {}
-
-    numeric_columns = dataframe.select_dtypes(
-        include=np.number
-    ).columns
-
-    for column in numeric_columns:
-
-        values = dataframe[column].dropna()
-
-        if len(values) < 4:
-            continue
-
-        q1 = values.quantile(0.25)
-        q3 = values.quantile(0.75)
-
-        iqr = q3 - q1
-
-        if iqr == 0:
-            continue
-
-        lower = q1 - 1.5 * iqr
-        upper = q3 + 1.5 * iqr
-
-        mask = (
-            (dataframe[column] < lower)
-            |
-            (dataframe[column] > upper)
-        )
-
-        count = int(mask.sum())
-
-        if count > 0:
-
-            results[column] = {
-                "count": count,
-                "lower": lower,
-                "upper": upper,
-                "rows": dataframe[mask]
-            }
-
-    return results
+# NOTE: these names must not collide with the helper functions in cleaning.py.
+opt_missing = st.sidebar.checkbox("🕳️ Handle Missing Values", value=True)
+opt_duplicates = st.sidebar.checkbox("♻️ Remove Duplicate Rows", value=True)
+opt_standardize = st.sidebar.checkbox("🔤 Standardize Categories", value=True)
+opt_outliers = st.sidebar.checkbox("📊 Detect Outliers", value=True)
+opt_features = st.sidebar.checkbox("🛠️ Feature Engineering", value=True)
+opt_encoding = st.sidebar.checkbox("🔢 Categorical Encoding", value=True)
+opt_scaling = st.sidebar.checkbox("📏 Numerical Scaling", value=True)
 
 
 # =========================================================
@@ -257,336 +131,150 @@ if uploaded_file is not None:
 
     try:
 
-        # -------------------------------------------------
-        # READ DATA
-        # -------------------------------------------------
-
-        original_df = pd.read_csv(uploaded_file)
+        original_df = load_csv(uploaded_file.getvalue())
 
         if original_df.empty:
-
             st.error("The uploaded dataset is empty.")
-
             st.stop()
 
-        df = original_df.copy()
+        # -------------------------------------------------
+        # COLUMN CHOICES (sidebar)
+        # -------------------------------------------------
+
+        all_columns = original_df.columns.tolist()
+
+        numeric_columns_original = (
+            original_df.select_dtypes(include=np.number).columns.tolist()
+        )
+
+        st.sidebar.divider()
+
+        st.sidebar.caption(
+            "The target column is kept as-is (never encoded or scaled), and "
+            "features derived from it are left out of the ML-ready dataset "
+            "to avoid target leakage."
+        )
+
+        target_choices = [NONE_LABEL] + all_columns
+
+        target_choice = st.sidebar.selectbox(
+            "🎯 Target column (optional)",
+            target_choices,
+            index=(
+                target_choices.index("Exam_Score")
+                if "Exam_Score" in target_choices
+                else 0
+            )
+        )
+
+        source_choices = [NONE_LABEL] + numeric_columns_original
+
+        source_choice = st.sidebar.selectbox(
+            "🛠️ Numeric column to bin into categories",
+            source_choices,
+            index=(
+                source_choices.index("Exam_Score")
+                if "Exam_Score" in source_choices
+                else 0
+            ),
+            disabled=not opt_features
+        )
 
         # -------------------------------------------------
-        # ORIGINAL METRICS
+        # RUN PIPELINE
+        # -------------------------------------------------
+
+        options = Options(
+            handle_missing=opt_missing,
+            remove_duplicates=opt_duplicates,
+            standardize_categories=opt_standardize,
+            detect_outliers=opt_outliers,
+            create_features=opt_features,
+            apply_encoding=opt_encoding,
+            apply_scaling=opt_scaling,
+            target=None if target_choice == NONE_LABEL else target_choice,
+            feature_source=None if source_choice == NONE_LABEL else source_choice
+        )
+
+        result = process(original_df, asdict(options))
+
+        df = result.cleaned
+        ml_df = result.ml
+
+        # -------------------------------------------------
+        # ORIGINAL / FINAL METRICS
         # -------------------------------------------------
 
         original_rows = len(original_df)
         original_columns = len(original_df.columns)
-
-        original_missing = int(
-            original_df.isnull().sum().sum()
-        )
-
-        original_duplicates = int(
-            original_df.duplicated().sum()
-        )
-
-        # =================================================
-        # PROCESSING
-        # =================================================
-
-        missing_fixed = 0
-        duplicates_removed = 0
-        created_features = []
-        outlier_results = {}
-
-        # -------------------------------------------------
-        # MISSING VALUES
-        # -------------------------------------------------
-
-        if handle_missing:
-
-            numeric_columns = df.select_dtypes(
-                include=np.number
-            ).columns
-
-            for column in numeric_columns:
-
-                count = int(
-                    df[column].isnull().sum()
-                )
-
-                if count > 0:
-
-                    median = df[column].median()
-
-                    df[column] = df[column].fillna(
-                        median
-                    )
-
-                    missing_fixed += count
-
-            categorical_columns = df.select_dtypes(
-                include=["object", "string"]
-            ).columns
-
-            for column in categorical_columns:
-
-                count = int(
-                    df[column].isnull().sum()
-                )
-
-                if count > 0:
-
-                    df[column] = df[column].fillna(
-                        "Unknown"
-                    )
-
-                    missing_fixed += count
-
-        # -------------------------------------------------
-        # DUPLICATES
-        # -------------------------------------------------
-
-        if remove_duplicates:
-
-            before = len(df)
-
-            df = df.drop_duplicates()
-
-            duplicates_removed = (
-                before - len(df)
-            )
-
-        # -------------------------------------------------
-        # STANDARDIZATION
-        # -------------------------------------------------
-
-        if standardize_categories:
-
-            df = standardize_categories(df)
-
-        # -------------------------------------------------
-        # OUTLIERS
-        # -------------------------------------------------
-
-        if detect_outliers:
-
-            outlier_results = find_outliers(df)
-
-        # -------------------------------------------------
-        # FEATURE ENGINEERING
-        # -------------------------------------------------
-
-        if create_features:
-
-            df, created_features = create_features(df)
-
-        # =================================================
-        # ML DATASET
-        # =================================================
-
-        ml_df = df.copy()
-
-        id_columns = detect_id_columns(
-            ml_df
-        )
-
-        encoded_columns = []
-        scaled_columns = []
-
-        # -------------------------------------------------
-        # ENCODING
-        # -------------------------------------------------
-
-        if apply_encoding:
-
-            categorical_columns = (
-                ml_df
-                .select_dtypes(
-                    include=["object", "string"]
-                )
-                .columns
-                .tolist()
-            )
-
-            categorical_columns = [
-                col
-                for col in categorical_columns
-                if col not in id_columns
-            ]
-
-            if categorical_columns:
-
-                encoded_columns = (
-                    categorical_columns.copy()
-                )
-
-                ml_df = pd.get_dummies(
-                    ml_df,
-                    columns=categorical_columns,
-                    dtype=int
-                )
-
-        # -------------------------------------------------
-        # SCALING
-        # -------------------------------------------------
-
-        if apply_scaling:
-
-            numeric_columns = (
-                ml_df
-                .select_dtypes(
-                    include=np.number
-                )
-                .columns
-                .tolist()
-            )
-
-            numeric_columns = [
-                col
-                for col in numeric_columns
-                if col not in id_columns
-            ]
-
-            if numeric_columns:
-
-                scaler = StandardScaler()
-
-                ml_df[numeric_columns] = (
-                    scaler.fit_transform(
-                        ml_df[numeric_columns]
-                    )
-                )
-
-                scaled_columns = numeric_columns
-
-        # =================================================
-        # DASHBOARD METRICS
-        # =================================================
-
-        st.markdown(
-            '<div class="section-title">'
-            '📊 Data Quality Dashboard'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        original_missing = int(original_df.isnull().sum().sum())
+        original_duplicates = int(original_df.duplicated().sum())
 
         final_rows = len(df)
         final_columns = len(df.columns)
+        final_missing = int(df.isnull().sum().sum())
+        final_duplicates = int(df.duplicated().sum())
 
-        final_missing = int(
-            df.isnull().sum().sum()
-        )
-
-        final_duplicates = int(
-            df.duplicated().sum()
-        )
+        section("📊 Data Quality Dashboard")
 
         col1, col2, col3, col4 = st.columns(4)
 
-        with col1:
+        col1.metric("Rows", final_rows, delta=final_rows - original_rows)
 
-            st.metric(
-                "Rows",
-                final_rows,
-                delta=final_rows - original_rows
-            )
-
-        with col2:
-
-            st.metric(
-                "Columns",
-                final_columns,
-                delta=final_columns - original_columns
-            )
-
-        with col3:
-
-            st.metric(
-                "Missing Values",
-                final_missing,
-                delta=final_missing - original_missing
-            )
-
-        with col4:
-
-            st.metric(
-                "Duplicates",
-                final_duplicates,
-                delta=final_duplicates - original_duplicates
-            )
-
-        # =================================================
-        # PROCESSING SUMMARY
-        # =================================================
-
-        st.markdown(
-            '<div class="section-title">'
-            '✨ Processing Summary'
-            '</div>',
-            unsafe_allow_html=True
+        col2.metric(
+            "Columns",
+            final_columns,
+            delta=final_columns - original_columns
         )
+
+        col3.metric(
+            "Missing Values",
+            final_missing,
+            delta=final_missing - original_missing
+        )
+
+        col4.metric(
+            "Duplicates",
+            final_duplicates,
+            delta=final_duplicates - original_duplicates
+        )
+
+        # -------------------------------------------------
+        # PROCESSING SUMMARY
+        # -------------------------------------------------
+
+        section("✨ Processing Summary")
 
         s1, s2, s3, s4 = st.columns(4)
 
-        with s1:
+        s1.metric("Missing Fixed", result.missing_fixed)
+        s2.metric("Duplicates Removed", result.duplicates_removed)
+        s3.metric("Features Created", len(result.created_features))
+        s4.metric("Potential Outlier Columns", len(result.outliers))
 
-            st.metric(
-                "Missing Fixed",
-                missing_fixed
+        if result.converted_columns:
+            st.info(
+                "Converted text columns to numbers: "
+                + ", ".join(result.converted_columns)
             )
 
-        with s2:
-
-            st.metric(
-                "Duplicates Removed",
-                duplicates_removed
-            )
-
-        with s3:
-
-            st.metric(
-                "Features Created",
-                len(created_features)
-            )
-
-        with s4:
-
-            st.metric(
-                "Potential Outlier Columns",
-                len(outlier_results)
-            )
-
-        # =================================================
+        # -------------------------------------------------
         # DATA QUALITY CHARTS
-        # =================================================
+        # -------------------------------------------------
 
-        st.markdown(
-            '<div class="section-title">'
-            '📈 Data Quality Analysis'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        section("📈 Data Quality Analysis")
 
         chart1, chart2 = st.columns(2)
-
-        # -------------------------------------------------
-        # MISSING VALUE CHART
-        # -------------------------------------------------
 
         with chart1:
 
             missing_data = (
-                original_df
-                .isnull()
-                .sum()
-                .reset_index()
+                original_df.isnull().sum().reset_index()
             )
 
-            missing_data.columns = [
-                "Column",
-                "Missing Values"
-            ]
+            missing_data.columns = ["Column", "Missing Values"]
 
-            missing_data = missing_data[
-                missing_data["Missing Values"] > 0
-            ]
+            missing_data = missing_data[missing_data["Missing Values"] > 0]
 
             if not missing_data.empty:
 
@@ -597,14 +285,9 @@ if uploaded_file is not None:
                     title="Missing Values by Column"
                 )
 
-                fig_missing.update_layout(
-                    height=350
-                )
+                fig_missing.update_layout(height=350)
 
-                st.plotly_chart(
-                    fig_missing,
-                    use_container_width=True
-                )
+                st.plotly_chart(fig_missing, width="stretch")
 
             else:
 
@@ -612,21 +295,9 @@ if uploaded_file is not None:
                     "No missing values found in the original dataset."
                 )
 
-        # -------------------------------------------------
-        # NUMERIC COLUMN CHART
-        # -------------------------------------------------
-
         with chart2:
 
-            numeric_columns_original = (
-                original_df
-                .select_dtypes(
-                    include=np.number
-                )
-                .columns
-            )
-
-            if len(numeric_columns_original) > 0:
+            if numeric_columns_original:
 
                 selected_column = st.selectbox(
                     "Select numerical column",
@@ -639,135 +310,92 @@ if uploaded_file is not None:
                     title=f"{selected_column} Distribution"
                 )
 
-                fig_distribution.update_layout(
-                    height=350
-                )
+                fig_distribution.update_layout(height=350)
 
-                st.plotly_chart(
-                    fig_distribution,
-                    use_container_width=True
-                )
+                st.plotly_chart(fig_distribution, width="stretch")
 
             else:
 
-                st.info(
-                    "No numerical columns available."
-                )
+                st.info("No numerical columns available.")
 
-        # =================================================
+        # -------------------------------------------------
         # DATA PREVIEW TABS
-        # =================================================
+        # -------------------------------------------------
 
-        st.markdown(
-            '<div class="section-title">'
-            '📋 Dataset Preview'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        section("📋 Dataset Preview")
 
-        tab1, tab2, tab3 = st.tabs(
-            [
-                "📄 Raw Dataset",
-                "✨ Cleaned Dataset",
-                "🤖 ML-Ready Dataset"
-            ]
-        )
+        tab1, tab2, tab3 = st.tabs([
+            "📄 Raw Dataset",
+            "✨ Cleaned Dataset",
+            "🤖 ML-Ready Dataset"
+        ])
 
         with tab1:
-
-            st.dataframe(
-                original_df,
-                use_container_width=True,
-                height=400
-            )
+            st.dataframe(original_df, width="stretch", height=400)
 
         with tab2:
-
-            st.dataframe(
-                df,
-                use_container_width=True,
-                height=400
-            )
+            st.dataframe(df, width="stretch", height=400)
 
         with tab3:
 
-            st.dataframe(
-                ml_df,
-                use_container_width=True,
-                height=400
-            )
+            if result.dropped_from_ml:
+                st.caption(
+                    "Left out of this dataset: "
+                    + ", ".join(f"`{c}`" for c in result.dropped_from_ml)
+                    + " (ID columns and features derived from the target)."
+                )
 
-        # =================================================
+            st.dataframe(ml_df, width="stretch", height=400)
+
+        # -------------------------------------------------
         # OUTLIERS
-        # =================================================
+        # -------------------------------------------------
 
-        st.markdown(
-            '<div class="section-title">'
-            '⚠️ Outlier Analysis'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        section("⚠️ Outlier Analysis")
 
-        if outlier_results:
+        if result.outliers:
 
             st.warning(
                 "Potential outliers were detected. "
                 "They are reported but not automatically removed."
             )
 
-            for column, result in outlier_results.items():
+            for column, outlier in result.outliers.items():
 
                 with st.expander(
-                    f"{column} — {result['count']} potential outliers"
+                    f"{column} — {outlier['count']} potential outliers"
                 ):
 
-                    st.write(
-                        f"Lower Bound: `{result['lower']:.2f}`"
-                    )
+                    st.write(f"Lower Bound: `{outlier['lower']:.2f}`")
+                    st.write(f"Upper Bound: `{outlier['upper']:.2f}`")
 
-                    st.write(
-                        f"Upper Bound: `{result['upper']:.2f}`"
-                    )
+                    st.dataframe(outlier["rows"], width="stretch")
 
-                    st.dataframe(
-                        result["rows"],
-                        use_container_width=True
-                    )
+        elif opt_outliers:
+
+            st.success("No potential outliers detected.")
 
         else:
 
-            st.success(
-                "No potential outliers detected."
-            )
+            st.info("Outlier detection is turned off.")
 
-        # =================================================
+        # -------------------------------------------------
         # FEATURE ENGINEERING
-        # =================================================
+        # -------------------------------------------------
 
-        if created_features:
+        if result.created_features:
 
-            st.markdown(
-                '<div class="section-title">'
-                '🛠️ Feature Engineering'
-                '</div>',
-                unsafe_allow_html=True
-            )
+            section("🛠️ Feature Engineering")
 
             st.success(
-                "Created features: "
-                + ", ".join(created_features)
+                "Created features: " + ", ".join(result.created_features)
             )
 
-        # =================================================
+        # -------------------------------------------------
         # CLEANING REPORT
-        # =================================================
+        # -------------------------------------------------
 
-        st.markdown(
-            '<div class="section-title">'
-            '📋 Cleaning Report'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        section("📋 Cleaning Report")
 
         report = pd.DataFrame({
             "Metric": [
@@ -783,7 +411,8 @@ if uploaded_file is not None:
                 "Potential Outlier Columns",
                 "Features Created",
                 "Encoded Columns",
-                "Scaled Columns"
+                "Scaled Columns",
+                "Columns Left Out of ML Dataset"
             ],
             "Value": [
                 original_rows,
@@ -792,75 +421,52 @@ if uploaded_file is not None:
                 final_columns,
                 original_missing,
                 final_missing,
-                missing_fixed,
+                result.missing_fixed,
                 original_duplicates,
-                duplicates_removed,
-                len(outlier_results),
-                len(created_features),
-                len(encoded_columns),
-                len(scaled_columns)
+                result.duplicates_removed,
+                len(result.outliers),
+                len(result.created_features),
+                len(result.encoded_columns),
+                len(result.scaled_columns),
+                len(result.dropped_from_ml)
             ]
         })
 
-        st.dataframe(
-            report,
-            use_container_width=True
-        )
+        st.dataframe(report, width="stretch")
 
-        # =================================================
+        # -------------------------------------------------
         # DOWNLOAD
-        # =================================================
+        # -------------------------------------------------
 
-        st.markdown(
-            '<div class="section-title">'
-            '⬇️ Download Results'
-            '</div>',
-            unsafe_allow_html=True
-        )
+        section("⬇️ Download Results")
 
         download1, download2 = st.columns(2)
 
         with download1:
 
-            cleaned_csv = df.to_csv(
-                index=False
-            )
-
             st.download_button(
                 "📥 Download Cleaned CSV",
-                cleaned_csv,
+                df.to_csv(index=False),
                 "cleaned_dataset.csv",
                 "text/csv",
-                use_container_width=True
+                width="stretch"
             )
 
         with download2:
 
-            ml_csv = ml_df.to_csv(
-                index=False
-            )
-
             st.download_button(
                 "🤖 Download ML-Ready CSV",
-                ml_csv,
+                ml_df.to_csv(index=False),
                 "ml_ready_dataset.csv",
                 "text/csv",
-                use_container_width=True
+                width="stretch"
             )
 
-        # =================================================
-        # SUCCESS
-        # =================================================
-
-        st.success(
-            "🎉 Dataset processing completed successfully!"
-        )
+        st.success("🎉 Dataset processing completed successfully!")
 
     except Exception as error:
 
-        st.error(
-            "❌ Something went wrong while processing the dataset."
-        )
+        st.error("❌ Something went wrong while processing the dataset.")
 
         st.exception(error)
 
@@ -871,9 +477,7 @@ if uploaded_file is not None:
 
 else:
 
-    st.info(
-        "👆 Upload a CSV dataset above to start."
-    )
+    st.info("👆 Upload a CSV dataset above to start.")
 
     st.markdown(
         """
@@ -882,10 +486,10 @@ else:
         | Step | Process |
         |---|---|
         | 1 | 🔍 Dataset inspection |
-        | 2 | 🕳️ Missing value handling |
+        | 2 | 🔤 Category standardization |
         | 3 | ♻️ Duplicate removal |
-        | 4 | 🔤 Category standardization |
-        | 5 | 📊 Outlier detection |
+        | 4 | 📊 Outlier detection |
+        | 5 | 🕳️ Missing value handling |
         | 6 | 🛠️ Feature engineering |
         | 7 | 🔢 Categorical encoding |
         | 8 | 📏 Numerical scaling |

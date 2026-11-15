@@ -7,6 +7,11 @@
 A config-driven pipeline that inspects, cleans and prepares tabular data for machine learning,
 exposed three ways: a **REST API** (FastAPI), a **web UI** (Streamlit) and a **CLI** (Typer).
 
+## 🌐 Live Demo
+
+🚀 **Try the application here:**  
+[Open Live Application](https://automated-data-cleaning-tool-uit2pvmyetqptrzfyrn5rk.streamlit.app/)
+
 ## Why it exists
 
 Real datasets arrive with missing values, duplicates, inconsistent categories and outliers. This

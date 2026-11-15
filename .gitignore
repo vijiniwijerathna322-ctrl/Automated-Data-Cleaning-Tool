@@ -22,3 +22,16 @@ Thumbs.db
 # Temporary files
 *.tmp
 *.log
+# Tooling caches
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+dist/
+build/
+*.egg-info/
+
+# Local env and outputs
+.env
+out/

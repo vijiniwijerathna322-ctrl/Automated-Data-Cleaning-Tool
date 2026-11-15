@@ -1,0 +1,21 @@
+# Default pipeline configuration. Every key is optional; omitted keys use the
+# defaults shown here. Unknown keys are rejected.
+
+# --- step toggles ---------------------------------------------------------
+coerce_numeric: true          # convert text columns that are really numbers
+standardize_categories: true  # trim + title-case category text
+remove_duplicates: true
+detect_outliers: true         # IQR rule; reported, never removed
+handle_missing: true          # median for numbers, "Unknown" for text
+create_features: true         # needs feature_source
+apply_encoding: true          # one-hot encode text in the ML dataset
+apply_scaling: true           # standard-scale numerics in the ML dataset
+
+# --- column selection -----------------------------------------------------
+# target: Exam_Score          # kept raw; target-derived features are left out of the ML dataset
+# feature_source: Exam_Score  # numeric column to bin into categories
+
+# --- tunables -------------------------------------------------------------
+max_category_unique: 50
+max_category_unique_ratio: 0.5
+outlier_iqr_multiplier: 1.5

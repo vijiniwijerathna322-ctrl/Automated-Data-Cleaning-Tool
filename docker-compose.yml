@@ -1,0 +1,36 @@
+services:
+  api:
+    build: .
+    image: datacleaner:local
+    ports:
+      - "8000:8000"
+    environment:
+      DATACLEANER_LOG_LEVEL: INFO
+      DATACLEANER_MAX_UPLOAD_MB: "25"
+      DATACLEANER_CORS_ORIGINS: '["http://localhost:8501"]'
+    restart: unless-stopped
+
+  ui:
+    image: datacleaner:local
+    command:
+      - datacleaner-ui
+      - --server.port=8501
+      - --server.address=0.0.0.0
+      - --server.headless=true
+    ports:
+      - "8501:8501"
+    environment:
+      DATACLEANER_API_URL: http://api:8000
+    depends_on:
+      api:
+        condition: service_healthy
+    healthcheck:
+      test:
+        - CMD
+        - python
+        - -c
+        - "import urllib.request as u; u.urlopen('http://127.0.0.1:8501/_stcore/health', timeout=3)"
+      interval: 30s
+      timeout: 5s
+      retries: 3
+    restart: unless-stopped

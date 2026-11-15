@@ -218,7 +218,9 @@ with chart2:
 
 # ---------------------------------------------------------------------- preview
 section("📋 Dataset Preview")
-tab_raw, tab_clean, tab_ml = st.tabs(["📄 Raw Dataset", "✨ Cleaned Dataset", "🤖 ML-Ready Dataset"])
+tab_raw, tab_clean, tab_ml = st.tabs(
+    ["📄 Raw Dataset", "✨ Cleaned Dataset", "🤖 ML-Ready Dataset"]
+)
 
 with tab_raw:
     st.dataframe(preview_to_frame(profile_response["preview"]), width="stretch", height=400)

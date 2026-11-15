@@ -72,9 +72,8 @@ class TestOrderingAndToggles:
         assert len(result.cleaned) == 1
 
     def test_all_toggles_off(self, sample_df: pd.DataFrame) -> None:
-        off = {
-            name: False
-            for name in (
+        off = dict.fromkeys(
+            (
                 "coerce_numeric",
                 "standardize_categories",
                 "remove_duplicates",
@@ -83,8 +82,9 @@ class TestOrderingAndToggles:
                 "create_features",
                 "apply_encoding",
                 "apply_scaling",
-            )
-        }
+            ),
+            False,
+        )
         result = Pipeline(PipelineConfig(**off)).run(sample_df)
         report = result.report
 

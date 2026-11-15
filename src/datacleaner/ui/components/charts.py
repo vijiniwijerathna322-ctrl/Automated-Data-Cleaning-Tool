@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import itertools
 from typing import Any
 
 import pandas as pd
@@ -37,7 +38,7 @@ def histogram_chart(column_profile: dict[str, Any]) -> Figure | None:
     edges, counts = hist["bin_edges"], hist["counts"]
     frame = pd.DataFrame(
         {
-            "Value": [(a + b) / 2 for a, b in zip(edges, edges[1:], strict=False)],
+            "Value": [(a + b) / 2 for a, b in itertools.pairwise(edges)],
             "Count": counts,
         }
     )

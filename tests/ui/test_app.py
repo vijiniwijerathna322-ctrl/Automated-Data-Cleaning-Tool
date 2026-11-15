@@ -38,9 +38,7 @@ def in_process_api(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
     st.cache_data.clear()
 
     with TestClient(create_app(Settings(json_logs=False))) as http:
-        monkeypatch.setattr(
-            api_client, "default_client", lambda: api_client.ApiClient(client=http)
-        )
+        monkeypatch.setattr(api_client, "default_client", lambda: api_client.ApiClient(client=http))
         yield
 
     st.cache_data.clear()

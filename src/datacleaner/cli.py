@@ -60,9 +60,7 @@ def clean(
     """Run the pipeline; write cleaned data, ML-ready data and a JSON report."""
     try:
         config = PipelineConfig.from_file(config_file) if config_file else PipelineConfig()
-        overrides = {
-            k: v for k, v in (("target", target), ("feature_source", feature_source)) if v
-        }
+        overrides = {k: v for k, v in (("target", target), ("feature_source", feature_source)) if v}
         config = config.model_copy(update=overrides)
 
         result = Pipeline(config).run(read_path(input_file))
@@ -104,9 +102,7 @@ def profile(
     typer.echo(f"ID-like columns: {', '.join(p.id_columns) or 'none'}\n")
 
     for col in p.column_profiles:
-        typer.echo(
-            f"  {col.name:<20} {col.kind:<8} missing={col.missing:<4} unique={col.unique}"
-        )
+        typer.echo(f"  {col.name:<20} {col.kind:<8} missing={col.missing:<4} unique={col.unique}")
 
 
 @app.command("init-config")

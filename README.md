@@ -69,8 +69,11 @@ python -m venv .venv && source .venv/bin/activate     # Windows: .venv\Scripts\a
 pip install -e ".[all]"
 
 make run-api      # http://localhost:8000/docs
-make run-ui       # http://localhost:8501   (needs the API running)
+make run-ui       # http://localhost:8501
 ```
+
+`make run-ui` works on its own: with no `DATACLEANER_API_URL` set, the UI starts the API inside
+its own process (see [Deployment](#deployment)). Set the variable to use a separate API.
 
 Or with Docker:
 
@@ -128,7 +131,20 @@ keys rejected). Service options are environment variables (see [.env.example](.e
 | `DATACLEANER_MAX_ROWS` | `500000` | reject datasets with more rows |
 | `DATACLEANER_LOG_LEVEL` | `INFO` | log verbosity |
 | `DATACLEANER_CORS_ORIGINS` | `["http://localhost:8501"]` | allowed browser origins |
-| `DATACLEANER_API_URL` | `http://localhost:8000` | where the UI finds the API |
+| `DATACLEANER_API_URL` | *(unset)* | API the UI calls; unset = run the API inside the UI process |
+
+## Deployment
+
+**Streamlit Community Cloud (the live demo).** Point the app at the repo with main file `app.py`
+and Python 3.12. The root `app.py` is a thin launcher for `src/datacleaner/ui/app.py`, and
+`requirements.txt` installs the project with its `api` and `ui` extras. Cloud hosts run a single
+process, so with `DATACLEANER_API_URL` unset the UI starts the real FastAPI app on a loopback
+port in a background thread (`ui/embedded.py`) and talks to it over HTTP. Redeploys happen
+automatically on every push to `main`.
+
+**Separate services.** Run the API (`uvicorn datacleaner.api.main:app`, or the Docker image) on
+any host and set `DATACLEANER_API_URL` on the UI to its address. `docker compose up` does this
+for you locally.
 
 ## Development
 

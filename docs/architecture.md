@@ -15,6 +15,9 @@ ui ──▶ (HTTP) ──▶ api ──▶ io ──▶ core
   maps domain errors to RFC 7807 problem responses.
 * **ui** – Streamlit. Talks to the API *only* through `ui/api_client.py`, which returns plain
   dicts, so the UI has no dependency on server or domain models.
+  On single-process hosts (Streamlit Community Cloud) `ui/embedded.py` starts the same FastAPI
+  app on a loopback port in a daemon thread when `DATACLEANER_API_URL` is unset, so the UI still
+  goes over real HTTP and the layering holds.
 * **cli** – a second adapter over the same `core` + `io`, proving the logic is reusable.
 
 ## The pipeline

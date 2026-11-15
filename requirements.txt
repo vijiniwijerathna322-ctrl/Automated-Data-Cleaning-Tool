@@ -1,0 +1,4 @@
+# Dependency file for hosts that read requirements.txt (e.g. Streamlit Community Cloud).
+# The single source of truth is pyproject.toml; this installs the project plus the API and
+# UI extras (the UI runs the API in-process when no external API is configured).
+-e .[api,ui]

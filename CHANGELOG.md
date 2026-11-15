@@ -4,6 +4,17 @@ All notable changes are documented here. Format follows
 [Keep a Changelog](https://keepachangelog.com/en/1.1.0/); versioning follows
 [SemVer](https://semver.org/).
 
+## [Unreleased]
+
+### Fixed
+- Live demo on Streamlit Community Cloud broke after the restructure (no root `app.py` or
+  `requirements.txt`, and no API to call). Restored a root `app.py` launcher and
+  `requirements.txt`, and the UI now runs the API in-process when `DATACLEANER_API_URL` is unset.
+
+### Changed
+- `datacleaner-ui` / `make run-ui` no longer need a separately started API.
+- The UI reuses one HTTP client per API URL instead of creating one per call.
+
 ## [0.1.0] - 2026-11-14
 
 ### Added

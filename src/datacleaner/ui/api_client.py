@@ -103,9 +103,29 @@ class ApiClient:
         return body
 
 
+_clients: dict[str, ApiClient] = {}
+
+
 def default_client() -> ApiClient:
-    """Client for the API configured via ``DATACLEANER_API_URL``."""
-    return ApiClient()
+    """Client for the API named by ``DATACLEANER_API_URL``.
+
+    When that variable is unset (e.g. Streamlit Community Cloud, or ``datacleaner-ui`` run
+    on its own) the API is started inside this process instead; see :mod:`.embedded`.
+    One client per URL is reused so connections are not leaked on every Streamlit rerun.
+    """
+    url = os.getenv("DATACLEANER_API_URL")
+
+    if not url:
+        from datacleaner.ui.embedded import ensure_embedded_api
+
+        url = ensure_embedded_api()
+
+    url = url.rstrip("/")
+
+    if url not in _clients:
+        _clients[url] = ApiClient(base_url=url)
+
+    return _clients[url]
 
 
 def _error_from(response: httpx.Response) -> ApiError:

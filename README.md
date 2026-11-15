@@ -209,9 +209,9 @@ from datacleaner.io import read_path
 
 result = Pipeline(PipelineConfig(target="Exam_Score")).run(read_path("data.csv"))
 
-result.cleaned   # cleaned DataFrame
-result.ml        # ML-ready DataFrame
-result.report    # CleaningReport (Pydantic model)
+result.cleaned  # cleaned DataFrame
+result.ml  # ML-ready DataFrame
+result.report  # CleaningReport (Pydantic model)
 ```
 
 ## ⚙️ Configuration
